@@ -16,7 +16,6 @@ import scala.concurrent.Future
 
 object crypto {
 
-  import GraphDSL.Implicits._
 
   class AesStage(cipher: Cipher) extends GraphStage[FlowShape[ByteString, ByteString]] {
     val in = Inlet[ByteString]("in")
@@ -63,22 +62,8 @@ object crypto {
   private val aesKey = generateAesKey()
   private val iv = generateIv()
 
-  val encryptionFlow: GraphStage[FlowShape[ByteString, ByteString]] = new AesStage(aesCipher(Cipher.ENCRYPT_MODE, aesKey, iv))
-  val decryptionFlow: GraphStage[FlowShape[ByteString, ByteString]] = new AesStage(aesCipher(Cipher.DECRYPT_MODE, aesKey, iv))
 
-  def encryptAndStore(fromRequest: Source[ByteString, Any], sink: Sink[ByteString, Future[MultipartUploadResult]]) =
-    RunnableGraph.fromGraph(GraphDSL.create(sink) { implicit b => s =>
-      fromRequest ~> encryptionFlow ~> s
-      ClosedShape
-    });
 
-  def decryptAndServe(source: Source[ByteString, NotUsed]) = Source.fromGraph(GraphDSL.create() {
-    implicit b =>
-      val s3source = b.add(source)
-      val dfl = b.add(decryptionFlow)
-      s3source ~> dfl
-      SourceShape(dfl.out)
-  });
 
   def aesKeySpec(key: Array[Byte]) =
     new SecretKeySpec(key, "AES")
@@ -90,23 +75,9 @@ object crypto {
     cipher
   }
 
-  def encryptAes(
-    source: Source[ByteString, Any],
-    keySpec: SecretKeySpec,
-    ivBytes: Array[Byte]
-  ): Source[ByteString, Any] = {
-    val encryptionCipher = aesCipher(Cipher.ENCRYPT_MODE, keySpec, ivBytes)
-    source.via(new AesStage(encryptionCipher))
-  }
+  def encryptionCipher =  aesCipher(Cipher.ENCRYPT_MODE, aesKey, iv)
+  def decryptionCipher = aesCipher(Cipher.DECRYPT_MODE, aesKey, iv)
 
-  def decryptAes(
-    source: Source[ByteString, Any],
-    keySpec: SecretKeySpec,
-    ivBytes: Array[Byte]
-  ): Source[ByteString, Any] = {
-    val decryptionCipher = aesCipher(Cipher.DECRYPT_MODE, keySpec, ivBytes)
-    source.via(new AesStage(decryptionCipher))
-  }
 
   def getRsaKeyFactory() =
     KeyFactory.getInstance("RSA")
